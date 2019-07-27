@@ -1,0 +1,14 @@
+diff -x '*.pyc' -Naur novaclient/v2/servers.py /home/hyphon/workspace/os/.openstack/lib/python2.7/site-packages/novaclient/v2/servers.py
+--- novaclient/v2/servers.py	2019-07-26 12:37:06.176638258 +0000
++++ /home/hyphon/workspace/os/.openstack/lib/python2.7/site-packages/novaclient/v2/servers.py	2019-07-27 01:38:11.489100516 +0000
+@@ -1656,6 +1656,10 @@
+         info = {'flavorRef': base.getid(flavor)}
+         if disk_config is not None:
+             info['OS-DCF:diskConfig'] = disk_config
++        # hyphon
++        if 'scheduler_hints' in kwargs:
++            info['os:scheduler_hints'] = kwargs['scheduler_hints']
++            kwargs.pop('scheduler_hints')
+ 
+         return self._action('resize', server, info=info, **kwargs)
+ 

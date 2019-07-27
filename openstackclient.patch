@@ -1,0 +1,111 @@
+diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/compute/v2/server.py /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/compute/v2/server.py
+--- python-openstackclient/openstackclient/compute/v2/server.py	2019-07-26 14:01:15.708408582 +0000
++++ /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/compute/v2/server.py	2019-07-27 07:07:45.156304024 +0000
+@@ -509,6 +509,15 @@
+             required=True,
+             help=_('Create server with this flavor (name or ID)'),
+         )
++        # hyphon
++        parser.add_argument(
++            '--ephemeral',
++            metavar='size=<size>[,format=<format>]',
++            action='append',
++            default=[],
++            help=_('Create and attach a local ephemeral block device of <size> GiB '
++                   'and format it to <format>.'),
++        )
+         parser.add_argument(
+             '--security-group',
+             metavar='<security-group>',
+@@ -667,6 +676,17 @@
+         )
+         return parser
+ 
++    def _parse_device_spec(self, device_spec):
++        spec_dict = {}
++        for arg in device_spec.split(','):
++            if '=' in arg:
++                spec_dict.update([arg.split('=')])
++            else:
++                raise argparse.ArgumentTypeError(
++                    _("Expected a comma-separated list of key=value pairs."
++                      " '%s'  is not a key=value pair.") % arg)
++        return spec_dict
++
+     def take_action(self, parsed_args):
+ 
+         def _show_progress(progress):
+@@ -818,6 +838,21 @@
+                         "--block-device-mapping is specified")
+                 raise exceptions.CommandError(msg)
+             block_device_mapping_v2.append(mapping)
++        # Handle block device by ephemeral local disk, hyphon
++        for ephemeral_spec in parsed_args.ephemeral:
++            bdm_dict = {'source_type': 'blank', 'destination_type': 'local',
++                        'boot_index': -1, 'delete_on_termination': True}
++            try:
++                eph_dict = self._parse_device_spec(ephemeral_spec)
++            except ValueError:
++                err_msg = (_("Invalid ephemeral argument '%s'.")
++                           % parsed_args.ephemeral)
++                raise argparse.ArgumentTypeError(err_msg)
++            if 'size' in eph_dict:
++                bdm_dict['volume_size'] = eph_dict['size']
++            if 'format' in eph_dict:
++                bdm_dict['guest_format'] = eph_dict['format']
++            block_device_mapping_v2.append(bdm_dict)
+ 
+         nics = []
+         auto_or_none = False
+@@ -2126,6 +2161,14 @@
+             metavar='<server>',
+             help=_('Server (name or ID)'),
+         )
++        # hyphon
++        parser.add_argument(
++            '--hint',
++            metavar='<key=value>',
++            action='append',
++            default=[],
++            help=_('Hints for the scheduler (optional extension)'),
++        )
+         phase_group.add_argument(
+             '--flavor',
+             metavar='<flavor>',
+@@ -2165,6 +2208,23 @@
+                 compute_client.flavors,
+                 parsed_args.flavor,
+             )
++            # hyphon
++            hints = {}
++            for hint in parsed_args.hint:
++                key, _sep, value = hint.partition('=')
++                # NOTE(vish): multiple copies of the same hint will
++                #             result in a list of values
++                if key in hints:
++                    if isinstance(hints[key], six.string_types):
++                        hints[key] = [hints[key]]
++                    hints[key] += [value]
++                else:
++                    hints[key] = value
++            kwargs = {}
++            if hints:
++                kwargs['scheduler_hints'] = hints
++            LOG.debug(_('hyphon resizing server kwargs: %s'), kwargs)
++
+             compute_client.servers.resize(server, flavor)
+             if parsed_args.wait:
+                 if utils.wait_for_status(
+diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/shell.py /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/shell.py
+--- python-openstackclient/openstackclient/shell.py	2019-07-26 14:01:15.720408949 +0000
++++ /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/shell.py	2019-07-27 05:54:24.406113194 +0000
+@@ -198,6 +198,9 @@
+ 
+ 
+ def main(argv=None):
++    # hyphon
++    # import pdb
++    # pdb.set_trace()
+     if argv is None:
+         argv = sys.argv[1:]
+         if six.PY2:
