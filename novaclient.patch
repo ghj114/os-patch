@@ -1,14 +1,18 @@
-diff -x '*.pyc' -Naur novaclient/v2/servers.py /home/hyphon/workspace/os/.openstack/lib/python2.7/site-packages/novaclient/v2/servers.py
---- novaclient/v2/servers.py	2019-07-26 12:37:06.176638258 +0000
-+++ /home/hyphon/workspace/os/.openstack/lib/python2.7/site-packages/novaclient/v2/servers.py	2019-07-27 01:38:11.489100516 +0000
-@@ -1656,6 +1656,10 @@
-         info = {'flavorRef': base.getid(flavor)}
+diff -x '*.pyc' -x '*.pyo' -Naur ../../source/novaclient/v2/servers.py ../novaclient/v2/servers.py
+--- ../../source/novaclient/v2/servers.py	2019-07-26 12:37:06.176638258 +0000
++++ ../novaclient/v2/servers.py	2019-09-02 05:33:24.522854414 +0000
+@@ -1657,6 +1657,14 @@
          if disk_config is not None:
              info['OS-DCF:diskConfig'] = disk_config
-+        # hyphon
+ 
++        # TODO(hyphon) resizing to special host.
 +        if 'scheduler_hints' in kwargs:
 +            info['os:scheduler_hints'] = kwargs['scheduler_hints']
 +            kwargs.pop('scheduler_hints')
- 
++        if 'host' in kwargs:
++            info['host'] = kwargs['host']
++            kwargs.pop('host')
++
          return self._action('resize', server, info=info, **kwargs)
  
+     def confirm_resize(self, server):

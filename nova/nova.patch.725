@@ -1,0 +1,197 @@
+diff -x '*.pyc' -x '*.pyo' -Naur nova/api/openstack/compute/schemas/servers.py /usr/lib/python2.7/site-packages/nova/api/openstack/compute/schemas/servers.py
+--- nova/api/openstack/compute/schemas/servers.py	2019-07-24 12:01:56.827569979 +0800
++++ /usr/lib/python2.7/site-packages/nova/api/openstack/compute/schemas/servers.py	2019-07-24 20:49:30.183450943 +0800
+@@ -446,6 +446,9 @@
+             'properties': {
+                 'flavorRef': parameter_types.flavor_ref,
+                 'OS-DCF:diskConfig': parameter_types.disk_config,
++                # hyphon
++                'os:scheduler_hints': _hints,
++                'OS-SCH-HNT:scheduler_hints': _hints,
+             },
+             'required': ['flavorRef'],
+             'additionalProperties': False,
+diff -x '*.pyc' -x '*.pyo' -Naur nova/api/openstack/compute/servers.py /usr/lib/python2.7/site-packages/nova/api/openstack/compute/servers.py
+--- nova/api/openstack/compute/servers.py	2019-07-24 12:01:56.979572082 +0800
++++ /usr/lib/python2.7/site-packages/nova/api/openstack/compute/servers.py	2019-07-24 21:22:48.880302638 +0800
+@@ -995,12 +995,21 @@
+     @validation.schema(schema_servers.resize)
+     def _action_resize(self, req, id, body):
+         """Resizes a given instance to the flavor size requested."""
++        LOG.debug("hyphon.%s",body)
+         resize_dict = body['resize']
+         flavor_ref = str(resize_dict["flavorRef"])
+ 
+         kwargs = {}
+         helpers.translate_attributes(helpers.RESIZE, resize_dict, kwargs)
+ 
++        # scheduler by hint. hyphon
++        scheduler_hints = {}
++        if 'os:scheduler_hints' in resize_dict:
++            scheduler_hints = resize_dict['os:scheduler_hints']
++        elif 'OS-SCH-HNT:scheduler_hints' in resize_dict:
++            scheduler_hints = resize_dict['OS-SCH-HNT:scheduler_hints']
++        if scheduler_hints: kwargs['scheduler_hints'] = scheduler_hints
++
+         self._resize(req, id, flavor_ref, **kwargs)
+ 
+     @wsgi.response(202)
+diff -x '*.pyc' -x '*.pyo' -Naur nova/api/openstack/wsgi.py /usr/lib/python2.7/site-packages/nova/api/openstack/wsgi.py
+--- nova/api/openstack/wsgi.py	2019-07-24 12:01:58.037586718 +0800
++++ /usr/lib/python2.7/site-packages/nova/api/openstack/wsgi.py	2019-07-24 20:39:57.400449138 +0800
+@@ -338,6 +338,7 @@
+     # Make sure there's exactly one key...
+     if len(decoded) != 1:
+         msg = _("too many body keys")
++        LOG.debug(msg) #hyphon
+         raise exception.MalformedRequestBody(reason=msg)
+ 
+     # Return the action name
+@@ -501,6 +502,7 @@
+ 
+         # Get the implementing method
+         try:
++            LOG.debug("hyphon,action=%s,type=%s,body=%s" % (action,content_type,body))
+             meth = self.get_method(request, action,
+                                    content_type, body)
+         except (AttributeError, TypeError):
+diff -x '*.pyc' -x '*.pyo' -Naur nova/compute/api.py /usr/lib/python2.7/site-packages/nova/compute/api.py
+--- nova/compute/api.py	2019-07-24 12:01:58.574594147 +0800
++++ /usr/lib/python2.7/site-packages/nova/compute/api.py	2019-07-25 16:46:05.286599600 +0800
+@@ -3649,6 +3649,14 @@
+             context, instance.uuid)
+         request_spec.ignore_hosts = filter_properties['ignore_hosts']
+ 
++        # hyphon 
++        if 'scheduler_hints' in extra_instance_updates:
++            hints_dict = extra_instance_updates['scheduler_hints']
++            request_spec.scheduler_hints = {
++                hint: value if isinstance(value, list) else [value]
++                for hint, value in hints_dict.items()}
++            request_spec.availability_zone = ''
++
+         instance.task_state = task_states.RESIZE_PREP
+         instance.progress = 0
+         instance.update(extra_instance_updates)
+@@ -3682,6 +3690,9 @@
+             # validate them.
+             request_spec.requested_destination = objects.Destination(
+                 host=node.host, node=node.hypervisor_hostname)
++            # hyphon
++            request_spec.availability_zone = ''
++            request_spec.scheduler_hints = {}
+ 
+         self.compute_task_api.resize_instance(context, instance,
+                 extra_instance_updates, scheduler_hint=scheduler_hint,
+diff -x '*.pyc' -x '*.pyo' -Naur nova/conf/scheduler.py /usr/lib/python2.7/site-packages/nova/conf/scheduler.py
+--- nova/conf/scheduler.py	2019-07-24 12:01:59.124601756 +0800
++++ /usr/lib/python2.7/site-packages/nova/conf/scheduler.py	2019-07-24 14:20:36.155422950 +0800
+@@ -407,6 +407,10 @@
+   enabled weight classes if the ``weight_classes`` setting is set to a
+   non-default value.
+ """),
++    cfg.FloatOpt("resize_weight_multiplier",
++         default=1.0,
++         help="""
++"""),
+     cfg.FloatOpt("disk_weight_multiplier",
+         default=1.0,
+         deprecated_group="DEFAULT",
+diff -x '*.pyc' -x '*.pyo' -Naur nova/scheduler/filters/disk_filter.py /usr/lib/python2.7/site-packages/nova/scheduler/filters/disk_filter.py
+--- nova/scheduler/filters/disk_filter.py	2019-07-24 12:02:02.570649429 +0800
++++ /usr/lib/python2.7/site-packages/nova/scheduler/filters/disk_filter.py	2019-07-24 14:20:36.155422950 +0800
+@@ -69,6 +69,8 @@
+         disk_mb_limit = total_usable_disk_mb * disk_allocation_ratio
+         used_disk_mb = total_usable_disk_mb - free_disk_mb
+         usable_disk_mb = disk_mb_limit - used_disk_mb
++        LOG.debug("hyphon total_usabe_disk_mb=%s,disk_allocation_ratio=%s,free_disk_mb=%s" % (total_usable_disk_mb,
++                  disk_allocation_ratio,free_disk_mb))
+ 
+         if not usable_disk_mb >= requested_disk:
+             LOG.debug("%(host_state)s does not have %(requested_disk)s MB "
+diff -x '*.pyc' -x '*.pyo' -Naur nova/scheduler/filter_scheduler.py /usr/lib/python2.7/site-packages/nova/scheduler/filter_scheduler.py
+--- nova/scheduler/filter_scheduler.py	2019-07-24 12:02:02.524648793 +0800
++++ /usr/lib/python2.7/site-packages/nova/scheduler/filter_scheduler.py	2019-07-24 14:20:36.156422964 +0800
+@@ -150,6 +150,7 @@
+         # are being scanned in a filter or weighing function.
+         hosts = self._get_all_host_states(elevated, spec_obj,
+             provider_summaries)
++        #LOG.debug("hyphon ALL hosts:%s", list(hosts))
+ 
+         # NOTE(sbauza): The RequestSpec.num_instances field contains the number
+         # of instances created when the RequestSpec was used to first boot some
+diff -x '*.pyc' -x '*.pyo' -Naur nova/scheduler/host_manager.py /usr/lib/python2.7/site-packages/nova/scheduler/host_manager.py
+--- nova/scheduler/host_manager.py	2019-07-24 12:02:02.641650411 +0800
++++ /usr/lib/python2.7/site-packages/nova/scheduler/host_manager.py	2019-07-24 14:20:36.156422964 +0800
+@@ -738,6 +738,7 @@
+ 
+                 seen_nodes.add(state_key)
+ 
++        LOG.debug("hyphon seen_nodes:%s", seen_nodes)
+         return (host_state_map[host] for host in seen_nodes)
+ 
+     def _get_aggregates_info(self, host):
+diff -x '*.pyc' -x '*.pyo' -Naur nova/scheduler/manager.py /usr/lib/python2.7/site-packages/nova/scheduler/manager.py
+--- nova/scheduler/manager.py	2019-07-24 12:02:02.654650591 +0800
++++ /usr/lib/python2.7/site-packages/nova/scheduler/manager.py	2019-07-24 14:20:36.156422964 +0800
+@@ -163,6 +163,7 @@
+         # Only return alternates if both return_objects and return_alternates
+         # are True.
+         return_alternates = return_alternates and return_objects
++        LOG.debug("hyphon, provider_summaries:%s,len:%d", provider_summaries.keys(), len(provider_summaries))
+         selections = self.driver.select_destinations(ctxt, spec_obj,
+                 instance_uuids, alloc_reqs_by_rp_uuid, provider_summaries,
+                 allocation_request_version, return_alternates)
+diff -x '*.pyc' -x '*.pyo' -Naur nova/scheduler/weights/resize.py /usr/lib/python2.7/site-packages/nova/scheduler/weights/resize.py
+--- nova/scheduler/weights/resize.py	1970-01-01 08:00:00.000000000 +0800
++++ /usr/lib/python2.7/site-packages/nova/scheduler/weights/resize.py	2019-07-24 14:20:36.156422964 +0800
+@@ -0,0 +1,49 @@
++# Copyright (c) 2016, Red Hat Inc.                                                                                                                                                                                                                                                   
++# All Rights Reserved.                                                                                                                                                                                                                                                               
++#                                                                                                                                                                                                                                                                                    
++#    Licensed under the Apache License, Version 2.0 (the "License"); you may                                                                                                                                                                                                         
++#    not use this file except in compliance with the License. You may obtain                                                                                                                                                                                                         
++#    a copy of the License at                                                                                                                                                                                                                                                        
++#                                                                                                                                                                                                                                                                                    
++#         http://www.apache.org/licenses/LICENSE-2.0                                                                                                                                                                                                                                 
++#                                                                                                                                                                                                                                                                                    
++#    Unless required by applicable law or agreed to in writing, software                                                                                                                                                                                                             
++#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT                                                                                                                                                                                                       
++#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the                                                                                                                                                                                                        
++#    License for the specific language governing permissions and limitations                                                                                                                                                                                                         
++#    under the License.                                                                                                                                                                                                                                                              
++                                                                                                                                                                                                                                                                                     
++"""                                                                                                                                                                                                                                                                                  
++Resize Weigher. The instance resizing occur on the same host                                                                                                                                                                                                                         
++                                                                                                                                                                                                                                                                                     
++The default is to spread instances across all hosts evenly.  If you prefer                                                                                                                                                                                                           
++stacking, you can set the 'resize_weight_multiplier' option (by configuration                                                                                                                                                                                                        
++or aggregate metadata) to a negative number and the weighing has the opposite                                                                                                                                                                                                        
++effect of the default.                                                                                                                                                                                                                                                               
++"""                                                                                                                                                                                                                                                                                  
++                                                                                                                                                                                                                                                                                     
++from oslo_log import log as logging                                                                                                                                                                                                                                                  
++                                                                                                                                                                                                                                                                                     
++import nova.conf                                                                                                                                                                                                                                                                     
++from nova.scheduler import utils                                                                                                                                                                                                                                                     
++from nova.scheduler import weights                                                                                                                                                                                                                                                   
++                                                                                                                                                                                                                                                                                     
++CONF = nova.conf.CONF                                                                                                                                                                                                                                                                
++                                                                                                                                                                                                                                                                                     
++LOG = logging.getLogger(__name__)                                                                                                                                                                                                                                                    
++                                                                                                                                                                                                                                                                                     
++                                                                                                                                                                                                                                                                                     
++class ResizeWeigher(weights.BaseHostWeigher):                                                                                                                                                                                                                                        
++    minval = 0                                                                                                                                                                                                                                                                       
++                                                                                                                                                                                                                                                                                     
++    def weight_multiplier(self, host_state):                                                                                                                                                                                                                                         
++        """Override the weight multiplier."""                                                                                                                                                                                                                                        
++        return utils.get_weight_multiplier(                                                                                                                                                                                                                                          
++            host_state, 'resize_weight_multiplier',                                                                                                                                                                                                                                  
++            CONF.filter_scheduler.resize_weight_multiplier)                                                                                                                                                                                                                          
++                                                                                                                                                                                                                                                                                     
++    def _weigh_object(self, host_state, spec_obj):                                                                                                                                                                                                                                   
++        """Higher weights win.  We want spreading to be the default."""                                                                                                                                                                                                              
++        if spec_obj.instance_uuid in host_state.instances.keys():                                                                                                                                                                                                                    
++            return 1                                                                                                                                                                                                                                                                 
++        return 0 

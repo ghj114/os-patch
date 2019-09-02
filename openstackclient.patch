@@ -1,6 +1,6 @@
-diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/compute/v2/server.py /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/compute/v2/server.py
---- python-openstackclient/openstackclient/compute/v2/server.py	2019-07-26 14:01:15.708408582 +0000
-+++ /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/compute/v2/server.py	2019-07-27 07:07:45.156304024 +0000
+diff -x '*.pyc' -x '*.pyo' -Naur ../../source/python-openstackclient/openstackclient/compute/v2/server.py ../python-openstackclient/openstackclient/compute/v2/server.py
+--- ../../source/python-openstackclient/openstackclient/compute/v2/server.py	2019-07-26 14:01:15.708408582 +0000
++++ ../python-openstackclient/openstackclient/compute/v2/server.py	2019-09-02 05:17:47.791426703 +0000
 @@ -509,6 +509,15 @@
              required=True,
              help=_('Create server with this flavor (name or ID)'),
@@ -57,7 +57,7 @@ diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/compute/v2/
  
          nics = []
          auto_or_none = False
-@@ -2126,6 +2161,14 @@
+@@ -2126,6 +2161,23 @@
              metavar='<server>',
              help=_('Server (name or ID)'),
          )
@@ -69,14 +69,24 @@ diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/compute/v2/
 +            default=[],
 +            help=_('Hints for the scheduler (optional extension)'),
 +        )
++        # hyphon
++        parser.add_argument(
++            '--host',
++            metavar='<hostname>',
++            action='append',
++            default=None,
++            help=_('resizing to special host(optional extension)'),
++        )
++
          phase_group.add_argument(
              '--flavor',
              metavar='<flavor>',
-@@ -2165,6 +2208,23 @@
+@@ -2165,7 +2217,28 @@
                  compute_client.flavors,
                  parsed_args.flavor,
              )
-+            # hyphon
+-            compute_client.servers.resize(server, flavor)
++            # TODO(hyphon)
 +            hints = {}
 +            for hint in parsed_args.hint:
 +                key, _sep, value = hint.partition('=')
@@ -93,12 +103,17 @@ diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/compute/v2/
 +                kwargs['scheduler_hints'] = hints
 +            LOG.debug(_('hyphon resizing server kwargs: %s'), kwargs)
 +
-             compute_client.servers.resize(server, flavor)
++            # TODO(hyphon) resizing to special host.
++            if parsed_args:
++                kwargs['host'] = parsed_args.host
++
++            compute_client.servers.resize(server, flavor, **kwargs)
              if parsed_args.wait:
                  if utils.wait_for_status(
-diff -x .git -x '*.pyc' -Naur python-openstackclient/openstackclient/shell.py /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/shell.py
---- python-openstackclient/openstackclient/shell.py	2019-07-26 14:01:15.720408949 +0000
-+++ /home/hyphon/workspace/os/develop/python-openstackclient/openstackclient/shell.py	2019-07-27 05:54:24.406113194 +0000
+                     compute_client.servers.get,
+diff -x '*.pyc' -x '*.pyo' -Naur ../../source/python-openstackclient/openstackclient/shell.py ../python-openstackclient/openstackclient/shell.py
+--- ../../source/python-openstackclient/openstackclient/shell.py	2019-07-26 14:01:15.720408949 +0000
++++ ../python-openstackclient/openstackclient/shell.py	2019-07-27 05:54:24.406113194 +0000
 @@ -198,6 +198,9 @@
  
  
