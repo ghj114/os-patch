@@ -1,0 +1,13 @@
+--- nova-19.0.1.~/nova/privsep/fs.py	2019-08-23 06:48:34.299712679 +0000
++++ nova-19.0.1/nova/privsep/fs.py	2019-10-15 09:05:49.303563517 +0000
+@@ -330,6 +330,10 @@
+             label_opt = '-n'
+         else:
+             label_opt = '-L'
++
++        if fs in ('xfs') and len(label) > 12:
++            label = label[-12:]
++
+         args.extend([label_opt, label])
+     args.append(path)
+     processutils.execute(*args)
